@@ -1,0 +1,19 @@
+name:                llscm-compiler
+version:             0.1.0.0
+synopsis:            Scheme to LLVM compiler
+description:         Please see README.md
+homepage:            http://github.com/michalmuskala/llscm
+license:             Apache 2
+license-file:        ../LICENSE
+author:              Michał Muskała
+maintainer:          michal@muskala.eu
+copyright:           2016 Michał Muskała
+category:            Compiler, Language
+build-type:          Simple
+cabal-version:       >=1.10
+
+executable llscm-compiler
+  hs-source-dirs:      src
+  main-is:             Main.hs
+  default-language:    Haskell2010
+  build-depends:       base >= 4.7 && < 5
