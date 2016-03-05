@@ -3,7 +3,7 @@ version:             0.1.0.0
 synopsis:            Scheme to LLVM compiler
 description:         Please see README.md
 homepage:            http://github.com/michalmuskala/llscm
-license:             Apache 2
+license:             Apache-2.0
 license-file:        ../LICENSE
 author:              Michał Muskała
 maintainer:          michal@muskala.eu
