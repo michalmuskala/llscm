@@ -1,3 +1,5 @@
+{-# LANGUAGE OverloadedStrings, NoImplicitPrelude #-}
+
 module LLSCM.Parser
        ( parseText
        , parseFile

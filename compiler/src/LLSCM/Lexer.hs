@@ -1,7 +1,11 @@
+{-# LANGUAGE OverloadedStrings, NoImplicitPrelude #-}
+
 module LLSCM.Lexer
        ( identifier
        , stringLiteral
        , whitespace
+       , boolean
+       , charLiteral
        -- , parens
        -- , braces
        -- , brackets
@@ -9,9 +13,10 @@ module LLSCM.Lexer
        )
        where
 
-import ClassyPrelude
+import ClassyPrelude hiding (fromList)
 
 import Data.Char
+import Data.List.NonEmpty (NonEmpty(..), fromList)
 
 import Text.Megaparsec
 import Text.Megaparsec.Text.Lazy
@@ -26,8 +31,37 @@ whitespace = L.space simpleSpace lineComment blockComment
 dot :: Parser ()
 dot = void (symbol ".")
 
+boolean :: Parser Bool
+boolean = lexeme "boolean" (char '#' >> true <|> false)
+  where true = (char 't' <* optional (string "rue")) >> return True
+        false = (char 'f' <* optional (string "alse")) >> return False
+
+charLiteral :: Parser Char
+charLiteral = lexeme "character" charLiteral'
+  where charLiteral' =  string "#\\" >> hex <|> named <|> anyChar
+        hex = do
+          void (char 'x')
+          x <- optional L.hexadecimal
+          return . maybe 'x' (chr . fromInteger) $ x
+        named = choice options <|> nullOrNewline
+          where options = map (make . first fromList) names
+                make (n:|rest, c) = do
+                  void (char n)
+                  rest' <- optional (string rest)
+                  return (maybe n (const c) rest') :: Parser Char
+                names = [ ("alarm", '\a'), ("backspace", '\b'), ("delete", '\x7f')
+                        , ("escape", '\x1b'), ("return", '\r'), ("space", ' ')
+                        , ("tab", '\t')
+                        ]
+                nullOrNewline = do
+                  void (char 'n')
+                  rest <- optional (nullChar <|> newlineChar)
+                  return (fromMaybe 'n' rest) :: Parser Char
+                nullChar = string "ull" *> pure '\0'
+                newlineChar = string "ewline" *> pure '\n'
+
 identifier :: Parser String
-identifier = lexeme identifier'
+identifier = lexeme "identifier" identifier'
   where
     identifier'        = simpleIdentifier <|> specialIdentifier <|> peculiarIdentifier
     explicitSign       = oneOf "+-"
@@ -37,48 +71,42 @@ identifier = lexeme identifier'
     specialSubsequent  = explicitSign <|> oneOf ".@"
     specialIdentifier  = surroundedLiteral '|'
     simpleIdentifier   = initial <:> many subsequent
-    peculiarIdentifier = signPeculiar <|> dottedPeculiar
-      where
-        signPeculiar   = explicitSign <:> signRest
-        signRest       = (signSubsequent <:> many subsequent) <|> pure []
-        dottedPeculiar = middleDot <|> leadingDot
-        signSubsequent = initial <|> explicitSign <|> char '@'
-        middleDot      = explicitSign <:> char '.' <:> dotSubsequent <:> many subsequent
-        dotSubsequent  = signSubsequent <|> char '.'
-        leadingDot     = char '.' <:> dotSubsequent <:> many subsequent
+    peculiarIdentifier = (withSign <|> withDot) <++> many subsequent
+      where withSign = explicitSign <:> part (withDot <|> signSubsequent <:> pure "")
+            withDot  = char '.' <:> dotSubsequent <:> pure ""
+            signSubsequent = initial <|> explicitSign <|> char '@'
+            dotSubsequent  = signSubsequent <|> char '.'
+            part p         = fmap (fromMaybe "") (optional p)
 
 stringLiteral :: Parser String
-stringLiteral = lexeme (surroundedLiteral '"')
+stringLiteral = lexeme "string" (surroundedLiteral '"')
 
-lexeme :: Parser a -> Parser a
-lexeme = L.lexeme whitespace
+lexeme :: String -> Parser a -> Parser a
+lexeme name parser = L.lexeme whitespace parser <?> name
 
 symbol :: String -> Parser String
 symbol = L.symbol whitespace
 
 surroundedLiteral :: Char -> Parser String
-surroundedLiteral c = char c >> concat <$> manyTill charLiteral (char c)
+surroundedLiteral c = char c >> manyTill literal (char c)
   where
-    charLiteral = unescaped <|> escape -- mnemonic <|> hexEscape
-    escape      = char '\\' >> mnemonic <|> hex
-    unescaped   = wrap (noneOf (c:"\\"))
-    mnemonic    = choice options
-      where options = map make mnemonics
-            make (x, m) = (char x >> return [m]) :: Parser String
+    literal   = unescaped <|> escape
+    escape    = char '\\' >> mnemonic <|> hex
+    hex       = char' 'x' >> (chr . fromInteger) <$> L.hexadecimal <* char ';'
+    unescaped = noneOf (c:"\\")
+    mnemonic  = choice . map make $ mnemonics
+      where make (value, result) = char' value *> return result :: Parser Char
             mnemonics = [ (c, c), ('\\', '\\'), ('a', '\a'), ('b', '\b')
-                        , ('t', '\t'), ('n', '\n'), ('r', '\r')]
-    hex = do
-      void (char 'x')
-      num <- L.hexadecimal
-      void (char ';')
-      wrap . return . chr . fromInteger $ num
-
-wrap :: (Applicative f) => f a -> f [a]
-wrap x = (:) <$> x <*> pure []
+                        , ('t', '\t'), ('n', '\n'), ('r', '\r')
+                        ]
 
 infixr 5 <:>
 (<:>) :: (Applicative f) => f a -> f [a] -> f [a]
 x <:> xs = (:) <$> x <*> xs
+
+infixr 5 <++>
+(<++>) :: (Applicative f) => f [a] -> f [a] -> f [a]
+lhs <++> rhs = (++) <$> lhs <*> rhs
 
 
 -- whitespace :: Parser ()
